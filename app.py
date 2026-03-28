@@ -10,6 +10,7 @@ import pytesseract
 import cv2
 import nltk
 import tensorflow as tf
+import threading
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
@@ -22,28 +23,16 @@ from nltk.stem import PorterStemmer
 from datetime import datetime
 
 # -------------------- BASIC SETUP --------------------
-# Safe NLTK loading
-try:
-    stop_words = set(stopwords.words('english'))
-except:
-    nltk.download('stopwords')
-    stop_words = set(stopwords.words('english'))
+nltk.download('stopwords')
 
-stemmer = PorterStemmer()
-
-# Disable GPU (important for Render)
+# Force CPU to prevent GPU errors on Render
 tf.config.set_visible_devices([], 'GPU')
 
 # -------------------- FLASK SETUP --------------------
 app = Flask(__name__)
 app.secret_key = "secret123"
 
-# ✅ FIX DATABASE URL
-db_url = os.environ.get('DATABASE_URL', 'sqlite:///users.db')
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = db_url
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///users.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 UPLOAD_FOLDER = '/tmp/uploads'
@@ -108,27 +97,33 @@ class Analysis(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# -------------------- LOAD MODEL --------------------
+# -------------------- LOAD MODEL (LAZY) --------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 model_path = os.path.join(BASE_DIR, 'models', 'fake_review_model.h5')
 tokenizer_path = os.path.join(BASE_DIR, 'models', 'tokenizer.pkl')
 
 model = None
 tokenizer = None
+MAX_LEN = 200
+stop_words = set(stopwords.words('english'))
+stemmer = PorterStemmer()
 
 def load_resources():
     global model, tokenizer
-    try:
-        if model is None:
+    if model is None:
+        try:
             model = load_model(model_path, compile=False)
-        if tokenizer is None:
+        except Exception as e:
+            print(f"Error loading model: {e}")
+    if tokenizer is None:
+        try:
             with open(tokenizer_path, 'rb') as f:
                 tokenizer = pickle.load(f)
-    except Exception as e:
-        print(f"Error loading model/tokenizer: {e}")
+        except Exception as e:
+            print(f"Error loading tokenizer: {e}")
 
-MAX_LEN = 200
+# Preload model in background thread (avoids Render timeout)
+threading.Thread(target=load_resources).start()
 
 # -------------------- TEXT PREPROCESS --------------------
 def preprocess_text(text):
@@ -140,10 +135,10 @@ def preprocess_text(text):
 
 # -------------------- PREDICT --------------------
 def predict_review(text):
-    load_resources()
+    load_resources()  # lazy load
 
     if model is None or tokenizer is None:
-        return 1, 0.0
+        return 1, 0.0  # safe default if not loaded
 
     if len(text.split()) < 3:
         return 1, 0.90
@@ -154,7 +149,6 @@ def predict_review(text):
     clean = preprocess_text(text)
     seq = tokenizer.texts_to_sequences([clean])
     pad = pad_sequences(seq, maxlen=MAX_LEN)
-
     prob = float(model.predict(pad, verbose=0)[0][0])
 
     if prob > 0.5:
@@ -163,92 +157,8 @@ def predict_review(text):
         return 0, 1 - prob
 
 # -------------------- ROUTES --------------------
-@app.route('/')
-def index():
-    return redirect(url_for('login'))
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        user = User.query.filter_by(username=request.form['username']).first()
-
-        if user and check_password_hash(user.password, request.form['password']):
-            login_user(user)
-            return redirect(url_for('dashboard'))
-        else:
-            flash("Invalid username or password")
-
-    return render_template('login.html')
-
-@app.route('/register', methods=['POST'])
-def register():
-    username = request.form['username']
-    password = request.form['password']
-    confirm = request.form['confirm_password']
-
-    if password != confirm:
-        flash("Passwords do not match")
-        return redirect(url_for('login'))
-
-    if User.query.filter_by(username=username).first():
-        flash("Username already exists")
-        return redirect(url_for('login'))
-
-    new_user = User(username=username, password=generate_password_hash(password))
-    db.session.add(new_user)
-    db.session.commit()
-
-    return redirect(url_for('login'))
-
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    analyses = Analysis.query.filter_by(user_id=current_user.id).all()
-
-    total_fake = sum(1 for a in analyses if a.result == 1)
-    total_genuine = sum(1 for a in analyses if a.result == 0)
-    total_analyses = len(analyses)  # ✅ FIX
-
-    return render_template(
-        'dashboard.html',
-        total_fake=total_fake,
-        total_genuine=total_genuine,
-        total_analyses=total_analyses
-    )
-
-@app.route('/api/predict', methods=['POST'])
-@login_required
-def api_predict():
-    review = request.form.get('review')
-
-    if not review:
-        return jsonify({"error": "No review"}), 400
-
-    prediction, confidence = predict_review(review)
-
-    analysis = Analysis(user_id=current_user.id, review=review, result=prediction, confidence=confidence)
-    db.session.add(analysis)
-    db.session.commit()
-
-    if prediction == 0:
-        blockchain.add_review({"review": review})
-
-    return jsonify({
-        "result": "Fake" if prediction else "Genuine",
-        "confidence": round(confidence * 100, 2)
-    })
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for('login'))
-
+# ... keep all your existing routes unchanged ...
+# index, login, register, dashboard, api_predict, upload_csv, upload_image, blockchain_table, logout
 # -------------------- INIT DB --------------------
 with app.app_context():
     db.create_all()
-
-# ✅ 🔥 CRITICAL FIX FOR RENDER
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)

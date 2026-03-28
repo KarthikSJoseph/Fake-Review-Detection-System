@@ -1,16 +1,21 @@
+# Core Flask
 Flask==3.0.0
 Flask-Login==0.6.3
 Flask-SQLAlchemy==3.1.1
 Flask-Bcrypt==1.0.1
 gunicorn==21.2.0
 
+# Data science essentials
 numpy==1.23.5
 pandas==2.0.3
 scikit-learn==1.3.2
-tensorflow==2.12.0
+
+# TensorFlow CPU only
+tensorflow-cpu==2.12.0
 keras==2.12.0
 h5py==3.8.0
 
+# NLP & image processing
 nltk==3.8.1
 opencv-python-headless==4.9.0.80
 pytesseract==0.3.10
