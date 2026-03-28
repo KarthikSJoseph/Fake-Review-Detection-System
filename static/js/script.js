@@ -50,21 +50,30 @@ async function analyzeReviews() {
   reviewList.innerHTML = "";
 
   for (let review of reviews) {
-    const response = await fetch("/api/predict", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "review=" + encodeURIComponent(review)
-    });
+    try {
+      const response = await fetch("/api/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "review=" + encodeURIComponent(review),
+        credentials: "same-origin"  // <-- important for login-required route
+      });
 
-    const data = await response.json();
+      if (!response.ok) throw new Error("Server returned an error");
 
-    const div = document.createElement("div");
-    div.classList.add("review-item");
-    if (data.result === "Fake") { div.classList.add("fake"); fakeCount++; }
-    else { div.classList.add("genuine"); genuineCount++; }
+      const data = await response.json();
 
-    div.innerHTML = `<strong>${data.result}</strong> - ${review}`;
-    reviewList.appendChild(div);
+      const div = document.createElement("div");
+      div.classList.add("review-item");
+      if (data.result === "Fake") { div.classList.add("fake"); fakeCount++; }
+      else { div.classList.add("genuine"); genuineCount++; }
+
+      div.innerHTML = `<strong>${data.result}</strong> - ${review}`;
+      reviewList.appendChild(div);
+
+    } catch (err) {
+      alert("Error analyzing review: " + err.message);
+      return;
+    }
   }
 
   document.getElementById("totalCount").innerText = reviews.length;
