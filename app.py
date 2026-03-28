@@ -31,7 +31,6 @@ tf.config.set_visible_devices([], 'GPU')
 app = Flask(__name__)
 app.secret_key = "secret123"
 
-# Use PostgreSQL if available, else fallback to SQLite
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///users.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -46,7 +45,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# -------------------- TESSERACT --------------------
+# -------------------- TESSERACT (SAFE) --------------------
 try:
     pytesseract.get_tesseract_version()
 except:
@@ -97,8 +96,9 @@ class Analysis(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# -------------------- LOAD MODEL --------------------
+# -------------------- LOAD MODEL (SAFE WITH ERROR LOGGING) --------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 model_path = os.path.join(BASE_DIR, 'models', 'fake_review_model.h5')
 tokenizer_path = os.path.join(BASE_DIR, 'models', 'tokenizer.pkl')
 
@@ -107,11 +107,18 @@ tokenizer = None
 
 def load_resources():
     global model, tokenizer
-    if model is None:
-        model = load_model(model_path, compile=False)
-    if tokenizer is None:
-        with open(tokenizer_path, 'rb') as f:
-            tokenizer = pickle.load(f)
+    try:
+        if model is None:
+            print(f"Loading model from {model_path}")
+            model = load_model(model_path, compile=False)
+            print("Model loaded successfully.")
+        if tokenizer is None:
+            print(f"Loading tokenizer from {tokenizer_path}")
+            with open(tokenizer_path, 'rb') as f:
+                tokenizer = pickle.load(f)
+            print("Tokenizer loaded successfully.")
+    except Exception as e:
+        print(f"Error loading model or tokenizer: {e}")
 
 MAX_LEN = 200
 stop_words = set(stopwords.words('english'))
@@ -128,14 +135,23 @@ def preprocess_text(text):
 # -------------------- PREDICT --------------------
 def predict_review(text):
     load_resources()
+
+    if model is None or tokenizer is None:
+        # Model or tokenizer not loaded, return safe default
+        return 1, 0.0
+
     if len(text.split()) < 3:
         return 1, 0.90
+
     if re.search(r'(http|www|buy now|click here|free|offer)', text.lower()):
         return 1, 0.95
+
     clean = preprocess_text(text)
     seq = tokenizer.texts_to_sequences([clean])
     pad = pad_sequences(seq, maxlen=MAX_LEN)
+
     prob = float(model.predict(pad, verbose=0)[0][0])
+
     if prob > 0.5:
         return 1, prob
     else:
@@ -150,12 +166,14 @@ def index():
 def login():
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form['username']).first()
+
         if user and check_password_hash(user.password, request.form['password']):
             login_user(user)
             flash("Login successful!")
             return redirect(url_for('dashboard'))
         else:
             flash("Invalid username or password")
+
     return render_template('login.html')
 
 @app.route('/register', methods=['POST'])
@@ -163,15 +181,19 @@ def register():
     username = request.form['username']
     password = request.form['password']
     confirm = request.form['confirm_password']
+
     if password != confirm:
         flash("Passwords do not match")
         return redirect(url_for('login'))
+
     if User.query.filter_by(username=username).first():
         flash("Username already exists")
         return redirect(url_for('login'))
+
     new_user = User(username=username, password=generate_password_hash(password))
     db.session.add(new_user)
     db.session.commit()
+
     flash("Account created successfully!")
     return redirect(url_for('login'))
 
@@ -181,17 +203,22 @@ def dashboard():
     analyses = Analysis.query.filter_by(user_id=current_user.id).all()
     total_fake = sum(1 for a in analyses if a.result == 1)
     total_genuine = sum(1 for a in analyses if a.result == 0)
-    total_analyses = len(analyses)  # <-- MINIMAL COMPULSORY CHANGE
-    return render_template('dashboard.html', total_fake=total_fake, total_genuine=total_genuine, total_analyses=total_analyses)
+    return render_template('dashboard.html', total_fake=total_fake, total_genuine=total_genuine)
 
 @app.route('/api/predict', methods=['POST'])
 @login_required
 def api_predict():
     review = request.form.get('review')
+
+    if not review or review.strip() == "":
+        return jsonify({"error": "No review provided"}), 400
+
     prediction, confidence = predict_review(review)
+
     analysis = Analysis(user_id=current_user.id, review=review, result=prediction, confidence=confidence)
     db.session.add(analysis)
     db.session.commit()
+
     if prediction == 0:
         blockchain.add_review({
             "review": review,
@@ -199,6 +226,7 @@ def api_predict():
             "user": current_user.username,
             "source": "Manual"
         })
+
     return jsonify({
         "result": "Fake" if prediction == 1 else "Genuine",
         "confidence": round(confidence * 100, 2)
@@ -209,12 +237,15 @@ def api_predict():
 def upload_csv():
     file = request.files['file']
     df = pd.read_csv(file)
+
     results = []
     for review in df.iloc[:, 0]:
         review = str(review)
         if review.strip() == "":
             continue
+
         prediction, confidence = predict_review(review)
+
         if prediction == 0:
             blockchain.add_review({
                 "review": review,
@@ -222,7 +253,9 @@ def upload_csv():
                 "user": current_user.username,
                 "source": "CSV"
             })
+
         results.append((review, prediction, round(confidence * 100, 2)))
+
     return render_template('image_results.html', results=results)
 
 @app.route('/upload_image', methods=['GET', 'POST'])
@@ -232,17 +265,22 @@ def upload_image():
         file = request.files['image']
         path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(path)
+
         try:
             img = cv2.imread(path)
             text = pytesseract.image_to_string(img)
         except:
             text = ""
+
         reviews = text.split('\n')
+
         results = []
         for review in reviews:
             if review.strip() == "":
                 continue
+
             prediction, confidence = predict_review(review)
+
             if prediction == 0:
                 blockchain.add_review({
                     "review": review,
@@ -250,8 +288,11 @@ def upload_image():
                     "user": current_user.username,
                     "source": "Screenshot"
                 })
+
             results.append((review, prediction, round(confidence * 100, 2)))
+
         return render_template('image_results.html', results=results)
+
     return render_template('upload_image.html')
 
 @app.route('/blockchain_table')
