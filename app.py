@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import pytesseract
 import cv2
+import nltk
+import tensorflow as tf
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
@@ -19,26 +21,37 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from datetime import datetime
 
+# -------------------- BASIC SETUP --------------------
+nltk.download('stopwords')
+
+# Disable GPU (important for Render)
+tf.config.set_visible_devices([], 'GPU')
+
 # -------------------- FLASK SETUP --------------------
 app = Flask(__name__)
 app.secret_key = "secret123"
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
-app.config['UPLOAD_FOLDER'] = 'uploads'
+# Use PostgreSQL if available, else fallback to SQLite
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///users.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Use /tmp for uploads (Render safe)
+UPLOAD_FOLDER = '/tmp/uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
 db = SQLAlchemy(app)
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# -------------------- TESSERACT --------------------
-if os.name == "nt":
-    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-else:
-    pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+# -------------------- TESSERACT (SAFE) --------------------
+try:
+    pytesseract.get_tesseract_version()
+except:
+    pytesseract.pytesseract.tesseract_cmd = None  # disable if not available
 
 # -------------------- BLOCKCHAIN --------------------
 class Blockchain:
@@ -85,12 +98,22 @@ class Analysis(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# -------------------- LOAD MODEL --------------------
+# -------------------- LOAD MODEL (SAFE) --------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-model = load_model(os.path.join(BASE_DIR, 'models/fake_review_model.h5'))
 
-with open(os.path.join(BASE_DIR, 'models/tokenizer.pkl'), 'rb') as f:
-    tokenizer = pickle.load(f)
+model_path = os.path.join(BASE_DIR, 'models', 'fake_review_model.h5')
+tokenizer_path = os.path.join(BASE_DIR, 'models', 'tokenizer.pkl')
+
+model = None
+tokenizer = None
+
+def load_resources():
+    global model, tokenizer
+    if model is None:
+        model = load_model(model_path, compile=False)
+    if tokenizer is None:
+        with open(tokenizer_path, 'rb') as f:
+            tokenizer = pickle.load(f)
 
 MAX_LEN = 200
 stop_words = set(stopwords.words('english'))
@@ -106,6 +129,8 @@ def preprocess_text(text):
 
 # -------------------- PREDICT --------------------
 def predict_review(text):
+    load_resources()
+
     if len(text.split()) < 3:
         return 1, 0.90
 
@@ -116,7 +141,7 @@ def predict_review(text):
     seq = tokenizer.texts_to_sequences([clean])
     pad = pad_sequences(seq, maxlen=MAX_LEN)
 
-    prob = float(model.predict(pad)[0][0])
+    prob = float(model.predict(pad, verbose=0)[0][0])
 
     if prob > 0.5:
         return 1, prob
@@ -128,7 +153,6 @@ def predict_review(text):
 def index():
     return redirect(url_for('login'))
 
-# LOGIN
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -143,7 +167,6 @@ def login():
 
     return render_template('login.html')
 
-# REGISTER
 @app.route('/register', methods=['POST'])
 def register():
     username = request.form['username']
@@ -165,7 +188,6 @@ def register():
     flash("Account created successfully!")
     return redirect(url_for('login'))
 
-# DASHBOARD
 @app.route('/dashboard')
 @login_required
 def dashboard():
@@ -174,7 +196,6 @@ def dashboard():
     total_genuine = sum(1 for a in analyses if a.result == 0)
     return render_template('dashboard.html', total_fake=total_fake, total_genuine=total_genuine)
 
-# MANUAL REVIEW
 @app.route('/api/predict', methods=['POST'])
 @login_required
 def api_predict():
@@ -198,7 +219,6 @@ def api_predict():
         "confidence": round(confidence * 100, 2)
     })
 
-# CSV UPLOAD
 @app.route('/upload_csv', methods=['POST'])
 @login_required
 def upload_csv():
@@ -225,7 +245,6 @@ def upload_csv():
 
     return render_template('image_results.html', results=results)
 
-# IMAGE UPLOAD
 @app.route('/upload_image', methods=['GET', 'POST'])
 @login_required
 def upload_image():
@@ -234,8 +253,12 @@ def upload_image():
         path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(path)
 
-        img = cv2.imread(path)
-        text = pytesseract.image_to_string(img)
+        try:
+            img = cv2.imread(path)
+            text = pytesseract.image_to_string(img)
+        except:
+            text = ""
+
         reviews = text.split('\n')
 
         results = []
@@ -259,13 +282,11 @@ def upload_image():
 
     return render_template('upload_image.html')
 
-# BLOCKCHAIN TABLE
 @app.route('/blockchain_table')
 @login_required
 def blockchain_table():
     return render_template('blockchain_table.html', chain=blockchain.chain)
 
-# LOGOUT
 @app.route('/logout')
 @login_required
 def logout():
@@ -273,10 +294,6 @@ def logout():
     flash("Logged out successfully")
     return redirect(url_for('login'))
 
-# -------------------- RUN --------------------
-if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+# -------------------- INIT DB --------------------
+with app.app_context():
+    db.create_all()
