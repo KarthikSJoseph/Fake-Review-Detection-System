@@ -24,7 +24,7 @@ from datetime import datetime
 # -------------------- BASIC SETUP --------------------
 nltk.download('stopwords')
 
-# Disable GPU for Render
+# Disable GPU (important for Render)
 tf.config.set_visible_devices([], 'GPU')
 
 # -------------------- FLASK SETUP --------------------
@@ -96,7 +96,7 @@ class Analysis(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# -------------------- LOAD MODEL & TOKENIZER --------------------
+# -------------------- LOAD MODEL --------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.join(BASE_DIR, 'models', 'fake_review_model.h5')
 tokenizer_path = os.path.join(BASE_DIR, 'models', 'tokenizer.pkl')
@@ -108,24 +108,27 @@ def load_resources():
     global model, tokenizer
     try:
         if model is None:
-            print(f"Loading model from {model_path}")
+            print(f"[INFO] Loading model from {model_path}")
             model = load_model(model_path, compile=False)
-            print("Model loaded successfully.")
+            print("[INFO] Model loaded successfully.")
         if tokenizer is None:
-            print(f"Loading tokenizer from {tokenizer_path}")
+            print(f"[INFO] Loading tokenizer from {tokenizer_path}")
             with open(tokenizer_path, 'rb') as f:
                 tokenizer = pickle.load(f)
-            print("Tokenizer loaded successfully.")
+            print("[INFO] Tokenizer loaded successfully.")
     except Exception as e:
-        print(f"Error loading model or tokenizer: {e}")
+        print(f"[ERROR] Failed to load model or tokenizer: {e}")
         model = None
         tokenizer = None
 
-# -------------------- TEXT PROCESSING --------------------
+# Load resources on app start
+load_resources()
+
 MAX_LEN = 200
 stop_words = set(stopwords.words('english'))
 stemmer = PorterStemmer()
 
+# -------------------- TEXT PREPROCESS --------------------
 def preprocess_text(text):
     text = str(text).lower()
     text = re.sub(r'[^a-z\s]', '', text)
@@ -133,29 +136,23 @@ def preprocess_text(text):
     words = [stemmer.stem(w) for w in words if w not in stop_words]
     return " ".join(words)
 
-# -------------------- PREDICTION --------------------
+# -------------------- PREDICT --------------------
 def predict_review(text):
-    load_resources()
-
-    # Neutral fallback if model/tokenizer fail
     if model is None or tokenizer is None:
-        print("Model/tokenizer not loaded, returning neutral prediction")
-        return 0, 0.5
-
-    if len(text.split()) < 3:
-        return 1, 0.90
-
-    if re.search(r'(http|www|buy now|click here|free|offer)', text.lower()):
-        return 1, 0.95
+        print("[WARNING] Model or tokenizer not loaded. Using fallback.")
+        if len(text.split()) < 3:
+            return 1, 0.90
+        if re.search(r'(http|www|buy now|click here|free|offer)', text.lower()):
+            return 1, 0.95
+        return 0, 0.9
 
     clean = preprocess_text(text)
     seq = tokenizer.texts_to_sequences([clean])
     pad = pad_sequences(seq, maxlen=MAX_LEN)
 
     prob = float(model.predict(pad, verbose=0)[0][0])
-    print(f"Prediction probability: {prob}")
 
-    if prob >= 0.5:
+    if prob > 0.5:
         return 1, prob
     else:
         return 0, 1 - prob
@@ -194,6 +191,7 @@ def register():
     new_user = User(username=username, password=generate_password_hash(password))
     db.session.add(new_user)
     db.session.commit()
+
     flash("Account created successfully!")
     return redirect(url_for('login'))
 
@@ -213,6 +211,7 @@ def api_predict():
         return jsonify({"error": "No review provided"}), 400
 
     prediction, confidence = predict_review(review)
+
     analysis = Analysis(user_id=current_user.id, review=review, result=prediction, confidence=confidence)
     db.session.add(analysis)
     db.session.commit()
@@ -235,12 +234,15 @@ def api_predict():
 def upload_csv():
     file = request.files['file']
     df = pd.read_csv(file)
+
     results = []
     for review in df.iloc[:, 0]:
         review = str(review)
         if review.strip() == "":
             continue
+
         prediction, confidence = predict_review(review)
+
         if prediction == 0:
             blockchain.add_review({
                 "review": review,
@@ -248,7 +250,9 @@ def upload_csv():
                 "user": current_user.username,
                 "source": "CSV"
             })
+
         results.append((review, prediction, round(confidence * 100, 2)))
+
     return render_template('image_results.html', results=results)
 
 @app.route('/upload_image', methods=['GET', 'POST'])
@@ -270,7 +274,9 @@ def upload_image():
         for review in reviews:
             if review.strip() == "":
                 continue
+
             prediction, confidence = predict_review(review)
+
             if prediction == 0:
                 blockchain.add_review({
                     "review": review,
@@ -278,8 +284,11 @@ def upload_image():
                     "user": current_user.username,
                     "source": "Screenshot"
                 })
+
             results.append((review, prediction, round(confidence * 100, 2)))
+
         return render_template('image_results.html', results=results)
+
     return render_template('upload_image.html')
 
 @app.route('/blockchain_table')
@@ -299,4 +308,4 @@ with app.app_context():
     db.create_all()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
