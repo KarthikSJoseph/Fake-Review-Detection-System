@@ -1,19 +1,56 @@
-/* 🔥 FIX PIE CHART SIZE (MOST IMPORTANT) */
+/* ===========================
+   GLOBAL STYLING
+=========================== */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #f5f6fa;
+  color: #333;
+  margin: 0;
+  padding: 0;
+}
+
+h1, h2, h3, h4, h5 {
+  color: #2f3640;
+  margin: 0;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* ===========================
+   CONTAINER LAYOUT
+=========================== */
+.container {
+  max-width: 1200px;
+  margin: 30px auto;
+  padding: 20px;
+}
+
+/* ===========================
+   CHART STYLING
+=========================== */
 .chart-container {
   width: 100%;
   max-width: 300px;
   height: 300px;
   margin: auto;
   position: relative;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  padding: 15px;
 }
 
-/* Ensure canvas respects container */
 canvas {
   width: 100% !important;
   height: 100% !important;
 }
 
-/* 🔥 FIX RESULTS LAYOUT */
+/* ===========================
+   RESULTS GRID
+=========================== */
 .results-grid {
   display: grid;
   grid-template-columns: 1fr 2fr;
@@ -21,19 +58,116 @@ canvas {
   align-items: start;
 }
 
-/* Prevent review list from stretching layout */
+/* REVIEW LIST */
 #reviewList {
   max-height: 400px;
   overflow-y: auto;
-  padding-right: 5px;
+  padding: 15px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
 }
 
-/* Optional: smooth scrolling look */
+/* Scrollbar style */
 #reviewList::-webkit-scrollbar {
   width: 6px;
 }
 
 #reviewList::-webkit-scrollbar-thumb {
-  background: #444;
+  background: #888;
   border-radius: 10px;
+}
+
+.review-item {
+  padding: 10px;
+  margin-bottom: 10px;
+  border-left: 5px solid #3498db;
+  background: #fefefe;
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* ===========================
+   BUTTON STYLING
+=========================== */
+button {
+  background: #3498db;
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  font-weight: bold;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+button:hover {
+  background: #2980b9;
+}
+
+/* ===========================
+   FORM STYLING
+=========================== */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+input[type="text"], textarea {
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  font-size: 16px;
+  width: 100%;
+}
+
+input[type="text"]:focus, textarea:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+/* ===========================
+   CARDS / DASHBOARD BOXES
+=========================== */
+.card {
+  background: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+}
+
+.card h3 {
+  margin-bottom: 15px;
+  color: #2f3640;
+}
+
+.card p {
+  font-size: 14px;
+  color: #555;
+}
+
+/* ===========================
+   PIE CHART COLORS
+=========================== */
+.pie-segment-fake {
+  background-color: #e74c3c !important;
+}
+
+.pie-segment-genuine {
+  background-color: #2ecc71 !important;
+}
+
+/* ===========================
+   RESPONSIVE
+=========================== */
+@media (max-width: 768px) {
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-container {
+    max-width: 100%;
+    height: 250px;
+  }
 }
