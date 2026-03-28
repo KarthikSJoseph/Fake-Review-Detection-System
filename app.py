@@ -2,19 +2,16 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin, current_user
-import os
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'  # Change this to a secure secret key
+app.secret_key = 'your_secret_key_here'
 
 # Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 
-# Flask-Login configuration
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
@@ -33,7 +30,7 @@ with app.app_context():
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Home route (requires login)
+# Home route
 @app.route('/')
 @login_required
 def home():
@@ -54,7 +51,7 @@ def login():
         if user and bcrypt.check_password_hash(user.password, password):
             login_user(user)
             flash('Logged in successfully!')
-            return redirect(request.args.get('next') or url_for('home'))
+            return redirect(url_for('home'))
         else:
             error = 'Invalid username or password.'
 
@@ -63,9 +60,6 @@ def login():
 # Register route
 @app.route('/register', methods=['POST'])
 def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('home'))
-
     error = None
     username = request.form['username']
     password = request.form['password']
@@ -93,7 +87,8 @@ def logout():
     flash('You have been logged out.')
     return redirect(url_for('login'))
 
-# Run the app (supports Render deployment)
+# Run the app
 if __name__ == '__main__':
+    import os
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=True)
