@@ -7,8 +7,7 @@
 
   <style>
     * { margin:0; padding:0; box-sizing:border-box; font-family: Arial; }
-    body { height:100vh; background:#0f172a; }
-    .page { height:100%; display:flex; justify-content:center; align-items:center; }
+    body { height:100vh; background:#0f172a; display:flex; justify-content:center; align-items:center; }
     .login-card {
       background:#fff; width:100%; max-width:380px; padding:32px;
       border-radius:14px; box-shadow:0 20px 40px rgba(0,0,0,0.3);
@@ -30,70 +29,71 @@
     }
     .footer { margin-top:20px; text-align:center; }
     .footer a { color:#4f46e5; cursor:pointer; }
+    .flash { background:#fee2e2; color:#b91c1c; padding:10px; margin-bottom:10px; border-radius:6px; text-align:center; }
   </style>
 </head>
-{% with messages = get_flashed_messages() %}
-  {% if messages %}
-    <script>
-      alert("{{ messages[0] }}");
-    </script>
-  {% endif %}
-{% endwith %}
 <body>
-<div class="page">
-  <div class="login-card">
 
-    <div class="header">
-      <h1 class="title" id="title">Welcome</h1>
-      <p class="subtitle" id="subtitle">Please sign in to your account</p>
-      {% if error %}
-        <p style="color:red; text-align:center; margin-bottom:10px;">
-          {{ error }}
-        </p>
+<div class="login-card">
+
+  <div class="header">
+    <h1 class="title" id="title">Welcome</h1>
+    <p class="subtitle" id="subtitle">Please sign in to your account</p>
+
+    <!-- Flask flash messages -->
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <div class="flash">{{ message }}</div>
+        {% endfor %}
       {% endif %}
-    </div>
+    {% endwith %}
 
-    <!-- LOGIN -->
-    <form method="POST" action="{{ url_for('login') }}" id="loginForm">
-      <div class="field">
-        <label>Username</label>
-        <input type="text" name="username" required />
-      </div>
-
-      <div class="field">
-        <label>Password</label>
-        <input type="password" name="password" required />
-      </div>
-
-      <button type="submit">Login</button>
-    </form>
-
-    <!-- REGISTER -->
-    <form method="POST" action="{{ url_for('register') }}" id="signupForm" style="display:none;">
-      <div class="field">
-        <label>Create Username</label>
-        <input type="text" name="username" required />
-      </div>
-
-      <div class="field">
-        <label>Create Password</label>
-        <input type="password" name="password" required />
-      </div>
-
-      <div class="field">
-        <label>Confirm Password</label>
-        <input type="password" name="confirm_password" required />
-      </div>
-
-      <button type="submit">Create Account</button>
-    </form>
-
-    <div class="footer">
-      <a onclick="showSignup()" id="createAccount">Create Account</a>
-      <a onclick="showLogin()" id="backToLogin" style="display:none;">Back to Login</a>
-    </div>
-
+    {% if error %}
+      <div class="flash">{{ error }}</div>
+    {% endif %}
   </div>
+
+  <!-- LOGIN FORM -->
+  <form method="POST" action="{{ url_for('login') }}" id="loginForm">
+    <div class="field">
+      <label>Username</label>
+      <input type="text" name="username" required />
+    </div>
+
+    <div class="field">
+      <label>Password</label>
+      <input type="password" name="password" required />
+    </div>
+
+    <button type="submit">Login</button>
+  </form>
+
+  <!-- SIGNUP FORM -->
+  <form method="POST" action="{{ url_for('register') }}" id="signupForm" style="display:none;">
+    <div class="field">
+      <label>Create Username</label>
+      <input type="text" name="username" required />
+    </div>
+
+    <div class="field">
+      <label>Create Password</label>
+      <input type="password" name="password" required />
+    </div>
+
+    <div class="field">
+      <label>Confirm Password</label>
+      <input type="password" name="confirm_password" required />
+    </div>
+
+    <button type="submit">Create Account</button>
+  </form>
+
+  <div class="footer">
+    <a onclick="showSignup()" id="createAccount">Create Account</a>
+    <a onclick="showLogin()" id="backToLogin" style="display:none;">Back to Login</a>
+  </div>
+
 </div>
 
 <script>
