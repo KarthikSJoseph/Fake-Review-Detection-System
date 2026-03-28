@@ -21,7 +21,7 @@ function handleFileUpload(event) {
   })
   .then(response => response.text())
   .then(html => {
-    // Replace page content with results page
+    // Replace page content with uploaded results
     document.open();
     document.write(html);
     document.close();
@@ -46,6 +46,7 @@ function uploadImage(event) {
   })
   .then(res => res.text())
   .then(html => {
+    // Replace page content with uploaded results
     document.open();
     document.write(html);
     document.close();
@@ -131,16 +132,61 @@ async function analyzeReviews() {
 function goBack() {
   document.getElementById("resultsView").classList.add("hidden");
   document.getElementById("inputView").classList.remove("hidden");
+  document.getElementById("reviewText").value = ""; // optional: clear textarea
+  document.getElementById("reviewList").innerHTML = "";
+  document.getElementById("totalCount").innerText = 0;
+  document.getElementById("fakeCount").innerText = 0;
+  document.getElementById("genuineCount").innerText = 0;
 
-  // Clear textarea if needed
-  // document.getElementById("reviewText").value = "";
+  if (chart) {
+    chart.destroy();
+    chart = null;
+  }
 }
 
-// ------------------ Event Listener for Outside Click to Close Menu ------------------
-document.addEventListener("click", function(event){
+// ------------------ Popup Toggle (CSV/Image) ------------------
+const addBtn = document.getElementById("addBtn");
+const uploadPopup = document.getElementById("uploadPopup");
+const closePopup = document.getElementById("closePopup");
+const uploadForm = document.getElementById("uploadForm");
+const fileInput = document.getElementById("fileInput");
+
+addBtn.addEventListener("click", () => uploadPopup.classList.remove("hidden"));
+closePopup.addEventListener("click", () => {
+  uploadPopup.classList.add("hidden");
+  uploadForm.reset();
+});
+
+// ------------------ Handle Upload Form Submit ------------------
+uploadForm.addEventListener("submit", function(e) {
+  e.preventDefault();
+  if (!fileInput.files.length) { alert("Select a file"); return; }
+
+  const file = fileInput.files[0];
+  const formData = new FormData();
+
+  if (file.name.endsWith(".csv")) {
+    formData.append("file", file);
+    fetch("/upload_csv", { method: "POST", body: formData })
+      .then(res => res.text())
+      .then(html => { document.open(); document.write(html); document.close(); })
+      .catch(err => alert("Error: " + err));
+  } else {
+    formData.append("image", file);
+    fetch("/upload_image", { method: "POST", body: formData })
+      .then(res => res.text())
+      .then(html => { document.open(); document.write(html); document.close(); })
+      .catch(err => alert("Error: " + err));
+  }
+
+  uploadPopup.classList.add("hidden");
+  uploadForm.reset();
+});
+
+// ------------------ Close Upload Menu on Outside Click ------------------
+document.addEventListener("click", function(event) {
   const menu = document.getElementById("uploadMenu");
-  const addBtn = document.getElementById("addBtn");
-  if (!menu.contains(event.target) && event.target !== addBtn) {
+  if (menu && !menu.contains(event.target) && event.target.id !== "addBtn") {
     menu.style.display = "none";
   }
 });
