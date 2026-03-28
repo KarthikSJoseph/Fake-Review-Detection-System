@@ -1,173 +1,191 @@
-/* ===========================
-   GLOBAL STYLING
-=========================== */
+/* -------------------- GENERAL RESET -------------------- */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    scroll-behavior: smooth;
+}
+
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: #f5f6fa;
-  color: #333;
-  margin: 0;
-  padding: 0;
+    background-color: #f5f6fa;
+    color: #333;
 }
 
-h1, h2, h3, h4, h5 {
-  color: #2f3640;
-  margin: 0;
+/* -------------------- NAVBAR / HEADER -------------------- */
+.navbar {
+    width: 100%;
+    background-color: #2f3640;
+    color: #fff;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
-a {
-  text-decoration: none;
-  color: inherit;
+.navbar a {
+    color: #fff;
+    text-decoration: none;
+    margin-left: 15px;
+    font-weight: 600;
 }
 
-/* ===========================
-   CONTAINER LAYOUT
-=========================== */
-.container {
-  max-width: 1200px;
-  margin: 30px auto;
-  padding: 20px;
+.navbar a:hover {
+    color: #f5b041;
 }
 
-/* ===========================
-   CHART STYLING
-=========================== */
+/* -------------------- DASHBOARD GRID -------------------- */
+.dashboard-container {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 30px;
+    padding: 20px;
+}
+
+.stats-card {
+    background-color: #fff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.stats-card h2 {
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+}
+
+.stats-card p {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #4CAF50;
+}
+
+.stats-card.fake p {
+    color: #FF4C4C;
+}
+
+/* -------------------- PIE CHART -------------------- */
 .chart-container {
-  width: 100%;
-  max-width: 300px;
-  height: 300px;
-  margin: auto;
-  position: relative;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-  padding: 15px;
+    width: 100%;
+    max-width: 350px;
+    height: 350px;
+    margin: auto;
+    position: relative;
+    background-color: #fff;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.1);
 }
 
+/* Ensure canvas respects container */
 canvas {
-  width: 100% !important;
-  height: 100% !important;
+    width: 100% !important;
+    height: 100% !important;
 }
 
-/* ===========================
-   RESULTS GRID
-=========================== */
+/* -------------------- RESULTS GRID -------------------- */
 .results-grid {
-  display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: 20px;
-  align-items: start;
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 20px;
+    align-items: start;
 }
 
-/* REVIEW LIST */
 #reviewList {
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 15px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px;
 }
 
-/* Scrollbar style */
+#reviewList li {
+    padding: 8px 10px;
+    margin-bottom: 5px;
+    border-radius: 5px;
+    background-color: #f1f2f6;
+    list-style-type: none;
+}
+
+#reviewList li.fake {
+    background-color: #ffcccc;
+}
+
+#reviewList li.genuine {
+    background-color: #ccffcc;
+}
+
+/* Scrollbar styling */
 #reviewList::-webkit-scrollbar {
-  width: 6px;
+    width: 6px;
 }
 
 #reviewList::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 10px;
+    background: #888;
+    border-radius: 10px;
 }
 
-.review-item {
-  padding: 10px;
-  margin-bottom: 10px;
-  border-left: 5px solid #3498db;
-  background: #fefefe;
-  border-radius: 5px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+#reviewList::-webkit-scrollbar-thumb:hover {
+    background: #555;
 }
 
-/* ===========================
-   BUTTON STYLING
-=========================== */
+/* -------------------- FORMS -------------------- */
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+input[type="text"], input[type="password"], input[type="file"], textarea {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 1rem;
+}
+
 button {
-  background: #3498db;
-  color: #fff;
-  border: none;
-  padding: 10px 20px;
-  font-weight: bold;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all 0.3s ease;
+    padding: 10px 20px;
+    border: none;
+    background-color: #2f3640;
+    color: #fff;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: 0.3s;
 }
 
 button:hover {
-  background: #2980b9;
+    background-color: #f5b041;
 }
 
-/* ===========================
-   FORM STYLING
-=========================== */
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
+/* -------------------- BLOCKCHAIN TABLE -------------------- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
 }
 
-input[type="text"], textarea {
-  padding: 10px;
-  border-radius: 5px;
-  border: 1px solid #ccc;
-  font-size: 16px;
-  width: 100%;
+table th, table td {
+    border: 1px solid #ccc;
+    padding: 10px;
+    text-align: left;
 }
 
-input[type="text"]:focus, textarea:focus {
-  outline: none;
-  border-color: #3498db;
+table th {
+    background-color: #2f3640;
+    color: #fff;
 }
 
-/* ===========================
-   CARDS / DASHBOARD BOXES
-=========================== */
-.card {
-  background: #fff;
-  padding: 20px;
-  border-radius: 10px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+table tr:nth-child(even) {
+    background-color: #f9f9f9;
 }
 
-.card h3 {
-  margin-bottom: 15px;
-  color: #2f3640;
-}
-
-.card p {
-  font-size: 14px;
-  color: #555;
-}
-
-/* ===========================
-   PIE CHART COLORS
-=========================== */
-.pie-segment-fake {
-  background-color: #e74c3c !important;
-}
-
-.pie-segment-genuine {
-  background-color: #2ecc71 !important;
-}
-
-/* ===========================
-   RESPONSIVE
-=========================== */
-@media (max-width: 768px) {
-  .results-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .chart-container {
-    max-width: 100%;
-    height: 250px;
-  }
+/* -------------------- RESPONSIVE -------------------- */
+@media (max-width: 1024px) {
+    .dashboard-container {
+        grid-template-columns: 1fr;
+    }
+    .chart-container {
+        max-width: 100%;
+    }
 }

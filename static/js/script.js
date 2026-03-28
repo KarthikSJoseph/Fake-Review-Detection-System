@@ -1,123 +1,142 @@
-let chart;
+// -------------------- GLOBAL VARIABLES --------------------
+let pieChart = null;
 
-function toggleUploadMenu() {
-  const menu = document.getElementById("uploadMenu");
-  menu.style.display = menu.style.display === "block" ? "none" : "block";
-}
+// -------------------- CHART.JS PIE CHART --------------------
+function renderPieChart(fake, genuine) {
+    const ctx = document.getElementById('pieChart').getContext('2d');
 
-function handleFileUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+    if (pieChart) {
+        pieChart.destroy();
+    }
 
-  const formData = new FormData();
-  formData.append("file", file);
-
-  fetch("/upload_csv", { method: "POST", body: formData })
-    .then(res => res.text())
-    .then(html => {
-      document.open();
-      document.write(html);
-      document.close();
-    })
-    .catch(err => alert("Error uploading CSV"));
-}
-
-function uploadImage(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const formData = new FormData();
-  formData.append("image", file);
-
-  fetch("/upload_image", { method: "POST", body: formData })
-    .then(res => res.text())
-    .then(html => {
-      document.open();
-      document.write(html);
-      document.close();
+    pieChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: ['Fake Reviews', 'Genuine Reviews'],
+            datasets: [{
+                data: [fake, genuine],
+                backgroundColor: ['#FF4C4C', '#4CAF50'],
+                borderColor: ['#fff', '#fff'],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
     });
 }
 
-async function analyzeReviews() {
-  const text = document.getElementById("reviewText").value.trim();
-  if (!text) return alert("Please enter a review");
+// -------------------- BLOCKCHAIN TABLE --------------------
+function populateBlockchain(chain) {
+    const tableBody = document.getElementById('blockchainBody');
+    tableBody.innerHTML = '';
 
-  const reviews = text.split("\n").filter(r => r.trim());
-  if (reviews.length === 0) return;
-
-  let fakeCount = 0, genuineCount = 0;
-  const reviewList = document.getElementById("reviewList");
-  reviewList.innerHTML = "";
-
-  for (let review of reviews) {
-    try {
-      const response = await fetch("/api/predict", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "review=" + encodeURIComponent(review),
-        credentials: "same-origin"
-      });
-
-      if (!response.ok) throw new Error("Server returned an error");
-
-      const data = await response.json();
-
-      const div = document.createElement("div");
-      div.classList.add("review-item");
-
-      if (data.result === "Fake") {
-        div.classList.add("fake");
-        fakeCount++;
-      } else {
-        div.classList.add("genuine");
-        genuineCount++;
-      }
-
-      div.innerHTML = `<strong>${data.result}</strong> - ${review}`;
-      reviewList.appendChild(div);
-
-    } catch (err) {
-      alert("Error analyzing review: " + err.message);
-      return;
-    }
-  }
-
-  // Update stats
-  document.getElementById("totalCount").innerText = reviews.length;
-  document.getElementById("fakeCount").innerText = fakeCount;
-  document.getElementById("genuineCount").innerText = genuineCount;
-
-  // Switch views
-  document.getElementById("inputView").classList.add("hidden");
-  document.getElementById("resultsView").classList.remove("hidden");
-
-  // 🔥 FIXED CHART RENDERING
-  const ctx = document.getElementById("pieChart").getContext("2d");
-
-  if (chart) chart.destroy();
-
-  chart = new Chart(ctx, {
-    type: "pie",
-    data: {
-      labels: ["Fake", "Genuine"],
-      datasets: [{
-        data: [fakeCount, genuineCount],
-        backgroundColor: ["#ef4444", "#22c55e"]
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,  // ✅ CRITICAL FIX
-      plugins: {
-        legend: {
-          position: "top"
-        }
-      }
-    }
-  });
+    chain.forEach(block => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${block.index}</td>
+            <td>${new Date(parseFloat(block.timestamp) * 1000).toLocaleString()}</td>
+            <td>${block.data ? JSON.stringify(block.data) : 'N/A'}</td>
+            <td>${block.previous_hash}</td>
+            <td>${block.hash}</td>
+        `;
+        tableBody.appendChild(row);
+    });
 }
 
-function goBack() {
-  document.getElementById("resultsView").classList.add("hidden");
-  document.getElementById("inputView").classList.remove("hidden");
+// -------------------- AJAX PREDICT --------------------
+async function predictReview(review) {
+    const formData = new FormData();
+    formData.append('review', review);
+
+    const response = await fetch('/api/predict', {
+        method: 'POST',
+        body: formData
+    });
+
+    return await response.json();
 }
+
+// -------------------- HANDLE REVIEW FORM --------------------
+document.getElementById('reviewForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const reviewInput = document.getElementById('reviewInput');
+    const review = reviewInput.value.trim();
+    if (!review) return;
+
+    const result = await predictReview(review);
+    alert(`Result: ${result.result}\nConfidence: ${result.confidence}%`);
+
+    reviewInput.value = '';
+    // Optionally, refresh blockchain table
+    fetchBlockchain();
+});
+
+// -------------------- HANDLE CSV UPLOAD --------------------
+document.getElementById('csvUploadForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fileInput = document.getElementById('csvFile');
+    if (!fileInput.files.length) return;
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    const response = await fetch('/upload_csv', {
+        method: 'POST',
+        body: formData
+    });
+
+    const html = await response.text();
+    document.getElementById('resultsContainer').innerHTML = html;
+    fileInput.value = '';
+    fetchBlockchain();
+});
+
+// -------------------- HANDLE IMAGE UPLOAD --------------------
+document.getElementById('imageUploadForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fileInput = document.getElementById('imageFile');
+    if (!fileInput.files.length) return;
+
+    const formData = new FormData();
+    formData.append('image', fileInput.files[0]);
+
+    const response = await fetch('/upload_image', {
+        method: 'POST',
+        body: formData
+    });
+
+    const html = await response.text();
+    document.getElementById('resultsContainer').innerHTML = html;
+    fileInput.value = '';
+    fetchBlockchain();
+});
+
+// -------------------- FETCH BLOCKCHAIN --------------------
+async function fetchBlockchain() {
+    const response = await fetch('/blockchain_table');
+    const html = await response.text();
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const tableBody = doc.getElementById('blockchainBody');
+
+    if (tableBody) {
+        document.getElementById('blockchainBody').innerHTML = tableBody.innerHTML;
+    }
+}
+
+// -------------------- ON PAGE LOAD --------------------
+document.addEventListener('DOMContentLoaded', () => {
+    const fake = parseInt(document.getElementById('totalFake')?.innerText || '0');
+    const genuine = parseInt(document.getElementById('totalGenuine')?.innerText || '0');
+    renderPieChart(fake, genuine);
+
+    // Initial blockchain load
+    fetchBlockchain();
+});
