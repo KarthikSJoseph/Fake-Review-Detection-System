@@ -1,142 +1,146 @@
-// -------------------- GLOBAL VARIABLES --------------------
-let pieChart = null;
+// ------------------ Global Chart ------------------
+let chart;
 
-// -------------------- CHART.JS PIE CHART --------------------
-function renderPieChart(fake, genuine) {
-    const ctx = document.getElementById('pieChart').getContext('2d');
+// ------------------ Toggle Upload Menu ------------------
+function toggleUploadMenu() {
+  const menu = document.getElementById("uploadMenu");
+  menu.style.display = (menu.style.display === "block") ? "none" : "block";
+}
 
-    if (pieChart) {
-        pieChart.destroy();
+// ------------------ Handle CSV Upload ------------------
+function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  fetch("/upload_csv", {
+    method: "POST",
+    body: formData
+  })
+  .then(response => response.text())
+  .then(html => {
+    // Replace page content with results page
+    document.open();
+    document.write(html);
+    document.close();
+  })
+  .catch(error => {
+    alert("Error uploading CSV");
+    console.error(error);
+  });
+}
+
+// ------------------ Handle Image Upload ------------------
+function uploadImage(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("image", file);
+
+  fetch("/upload_image", {
+    method: "POST",
+    body: formData
+  })
+  .then(res => res.text())
+  .then(html => {
+    document.open();
+    document.write(html);
+    document.close();
+  })
+  .catch(error => {
+    alert("Error uploading image");
+    console.error(error);
+  });
+}
+
+// ------------------ Analyze Reviews ------------------
+async function analyzeReviews() {
+  const text = document.getElementById("reviewText").value.trim();
+  if (!text) {
+    alert("Please enter a review");
+    return;
+  }
+
+  const reviews = text.split("\n").filter(r => r.trim());
+
+  const reviewList = document.getElementById("reviewList");
+  reviewList.innerHTML = "";
+
+  let fakeCount = 0;
+  let genuineCount = 0;
+
+  for (let review of reviews) {
+    const response = await fetch("/api/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "review=" + encodeURIComponent(review)
+    });
+
+    const data = await response.json();
+
+    const div = document.createElement("div");
+    div.classList.add("review-item");
+    div.innerHTML = `<strong>${data.result}</strong> - ${review}`;
+
+    if (data.result === "Fake") {
+      div.classList.add("fake");
+      fakeCount++;
+    } else {
+      div.classList.add("genuine");
+      genuineCount++;
     }
 
-    pieChart = new Chart(ctx, {
-        type: 'pie',
-        data: {
-            labels: ['Fake Reviews', 'Genuine Reviews'],
-            datasets: [{
-                data: [fake, genuine],
-                backgroundColor: ['#FF4C4C', '#4CAF50'],
-                borderColor: ['#fff', '#fff'],
-                borderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'bottom'
-                }
-            }
-        }
-    });
-}
+    reviewList.appendChild(div);
+  }
 
-// -------------------- BLOCKCHAIN TABLE --------------------
-function populateBlockchain(chain) {
-    const tableBody = document.getElementById('blockchainBody');
-    tableBody.innerHTML = '';
+  // Update stats
+  document.getElementById("totalCount").innerText = reviews.length;
+  document.getElementById("fakeCount").innerText = fakeCount;
+  document.getElementById("genuineCount").innerText = genuineCount;
 
-    chain.forEach(block => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${block.index}</td>
-            <td>${new Date(parseFloat(block.timestamp) * 1000).toLocaleString()}</td>
-            <td>${block.data ? JSON.stringify(block.data) : 'N/A'}</td>
-            <td>${block.previous_hash}</td>
-            <td>${block.hash}</td>
-        `;
-        tableBody.appendChild(row);
-    });
-}
+  // Show results, hide input
+  document.getElementById("inputView").classList.add("hidden");
+  document.getElementById("resultsView").classList.remove("hidden");
 
-// -------------------- AJAX PREDICT --------------------
-async function predictReview(review) {
-    const formData = new FormData();
-    formData.append('review', review);
+  // Render pie chart
+  const ctx = document.getElementById("pieChart").getContext("2d");
+  if (chart) chart.destroy();
 
-    const response = await fetch('/api/predict', {
-        method: 'POST',
-        body: formData
-    });
-
-    return await response.json();
-}
-
-// -------------------- HANDLE REVIEW FORM --------------------
-document.getElementById('reviewForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const reviewInput = document.getElementById('reviewInput');
-    const review = reviewInput.value.trim();
-    if (!review) return;
-
-    const result = await predictReview(review);
-    alert(`Result: ${result.result}\nConfidence: ${result.confidence}%`);
-
-    reviewInput.value = '';
-    // Optionally, refresh blockchain table
-    fetchBlockchain();
-});
-
-// -------------------- HANDLE CSV UPLOAD --------------------
-document.getElementById('csvUploadForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fileInput = document.getElementById('csvFile');
-    if (!fileInput.files.length) return;
-
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-
-    const response = await fetch('/upload_csv', {
-        method: 'POST',
-        body: formData
-    });
-
-    const html = await response.text();
-    document.getElementById('resultsContainer').innerHTML = html;
-    fileInput.value = '';
-    fetchBlockchain();
-});
-
-// -------------------- HANDLE IMAGE UPLOAD --------------------
-document.getElementById('imageUploadForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fileInput = document.getElementById('imageFile');
-    if (!fileInput.files.length) return;
-
-    const formData = new FormData();
-    formData.append('image', fileInput.files[0]);
-
-    const response = await fetch('/upload_image', {
-        method: 'POST',
-        body: formData
-    });
-
-    const html = await response.text();
-    document.getElementById('resultsContainer').innerHTML = html;
-    fileInput.value = '';
-    fetchBlockchain();
-});
-
-// -------------------- FETCH BLOCKCHAIN --------------------
-async function fetchBlockchain() {
-    const response = await fetch('/blockchain_table');
-    const html = await response.text();
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const tableBody = doc.getElementById('blockchainBody');
-
-    if (tableBody) {
-        document.getElementById('blockchainBody').innerHTML = tableBody.innerHTML;
+  chart = new Chart(ctx, {
+    type: "pie",
+    data: {
+      labels: ["Fake", "Genuine"],
+      datasets: [{
+        data: [fakeCount, genuineCount],
+        backgroundColor: ["#ef4444", "#22c55e"]
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: "bottom" }
+      }
     }
+  });
 }
 
-// -------------------- ON PAGE LOAD --------------------
-document.addEventListener('DOMContentLoaded', () => {
-    const fake = parseInt(document.getElementById('totalFake')?.innerText || '0');
-    const genuine = parseInt(document.getElementById('totalGenuine')?.innerText || '0');
-    renderPieChart(fake, genuine);
+// ------------------ Go Back to Input ------------------
+function goBack() {
+  document.getElementById("resultsView").classList.add("hidden");
+  document.getElementById("inputView").classList.remove("hidden");
 
-    // Initial blockchain load
-    fetchBlockchain();
+  // Clear textarea if needed
+  // document.getElementById("reviewText").value = "";
+}
+
+// ------------------ Event Listener for Outside Click to Close Menu ------------------
+document.addEventListener("click", function(event){
+  const menu = document.getElementById("uploadMenu");
+  const addBtn = document.getElementById("addBtn");
+  if (!menu.contains(event.target) && event.target !== addBtn) {
+    menu.style.display = "none";
+  }
 });

@@ -4,7 +4,6 @@ import json
 import time
 import hashlib
 import pickle
-import numpy as np
 import pandas as pd
 import pytesseract
 import cv2
@@ -24,34 +23,33 @@ from datetime import datetime
 # -------------------- BASIC SETUP --------------------
 nltk.download('stopwords')
 
-# Disable GPU (important for Render)
+# Disable GPU (for safe deployment)
 tf.config.set_visible_devices([], 'GPU')
 
 # -------------------- FLASK SETUP --------------------
 app = Flask(__name__)
 app.secret_key = "secret123"
 
-# Use PostgreSQL if available, else fallback to SQLite
+# Database setup (PostgreSQL if available, else SQLite)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///users.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Use /tmp for uploads (Render safe)
+# Upload folder (Render safe)
 UPLOAD_FOLDER = '/tmp/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 db = SQLAlchemy(app)
-
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# -------------------- TESSERACT (SAFE) --------------------
+# -------------------- TESSERACT SAFE --------------------
 try:
     pytesseract.get_tesseract_version()
 except:
-    pytesseract.pytesseract.tesseract_cmd = None  # disable if not available
+    pytesseract.pytesseract.tesseract_cmd = None
 
 # -------------------- BLOCKCHAIN --------------------
 class Blockchain:
@@ -98,27 +96,24 @@ class Analysis(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# -------------------- LOAD MODEL (SAFE) --------------------
+# -------------------- LOAD MODEL & TOKENIZER --------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-model_path = os.path.join(BASE_DIR, 'models', 'fake_review_model.h5')
-tokenizer_path = os.path.join(BASE_DIR, 'models', 'tokenizer.pkl')
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'fake_review_model.h5')
+TOKENIZER_PATH = os.path.join(BASE_DIR, 'models', 'tokenizer.pkl')
 
 model = None
 tokenizer = None
+MAX_LEN = 200
+stop_words = set(stopwords.words('english'))
+stemmer = PorterStemmer()
 
 def load_resources():
     global model, tokenizer
     if model is None:
-        # ✅ Add compile=False to fix InputLayer deserialization error
-        model = load_model(model_path, compile=False)
+        model = load_model(MODEL_PATH, compile=False)
     if tokenizer is None:
-        with open(tokenizer_path, 'rb') as f:
+        with open(TOKENIZER_PATH, 'rb') as f:
             tokenizer = pickle.load(f)
-
-MAX_LEN = 200
-stop_words = set(stopwords.words('english'))
-stemmer = PorterStemmer()
 
 # -------------------- TEXT PREPROCESS --------------------
 def preprocess_text(text):
@@ -132,9 +127,9 @@ def preprocess_text(text):
 def predict_review(text):
     load_resources()
 
+    # Basic heuristics
     if len(text.split()) < 3:
         return 1, 0.90
-
     if re.search(r'(http|www|buy now|click here|free|offer)', text.lower()):
         return 1, 0.95
 
@@ -143,7 +138,6 @@ def predict_review(text):
     pad = pad_sequences(seq, maxlen=MAX_LEN)
 
     prob = float(model.predict(pad, verbose=0)[0][0])
-
     if prob > 0.5:
         return 1, prob
     else:
@@ -158,14 +152,12 @@ def index():
 def login():
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form['username']).first()
-
         if user and check_password_hash(user.password, request.form['password']):
             login_user(user)
             flash("Login successful!")
             return redirect(url_for('dashboard'))
         else:
             flash("Invalid username or password")
-
     return render_template('login.html')
 
 @app.route('/register', methods=['POST'])
@@ -195,7 +187,7 @@ def dashboard():
     analyses = Analysis.query.filter_by(user_id=current_user.id).all()
     total_fake = sum(1 for a in analyses if a.result == 1)
     total_genuine = sum(1 for a in analyses if a.result == 0)
-    return render_template('dashboard.html', total_fake=total_fake, total_genuine=total_genuine)
+    return render_template('dashboard.html', total_fake=total_fake, total_genuine=total_genuine, total_analyses=len(analyses))
 
 @app.route('/api/predict', methods=['POST'])
 @login_required
@@ -207,17 +199,18 @@ def api_predict():
     db.session.add(analysis)
     db.session.commit()
 
+    # Add genuine reviews to blockchain
     if prediction == 0:
         blockchain.add_review({
             "review": review,
-            "confidence": round(confidence * 100, 2),
+            "confidence": round(confidence*100, 2),
             "user": current_user.username,
             "source": "Manual"
         })
 
     return jsonify({
         "result": "Fake" if prediction == 1 else "Genuine",
-        "confidence": round(confidence * 100, 2)
+        "confidence": round(confidence*100, 2)
     })
 
 @app.route('/upload_csv', methods=['POST'])
@@ -231,57 +224,47 @@ def upload_csv():
         review = str(review)
         if review.strip() == "":
             continue
-
         prediction, confidence = predict_review(review)
-
         if prediction == 0:
             blockchain.add_review({
                 "review": review,
-                "confidence": round(confidence * 100, 2),
+                "confidence": round(confidence*100,2),
                 "user": current_user.username,
                 "source": "CSV"
             })
-
-        results.append((review, prediction, round(confidence * 100, 2)))
+        results.append((review, prediction, round(confidence*100,2)))
 
     return render_template('image_results.html', results=results)
 
-@app.route('/upload_image', methods=['GET', 'POST'])
+@app.route('/upload_image', methods=['POST'])
 @login_required
 def upload_image():
-    if request.method == 'POST':
-        file = request.files['image']
-        path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(path)
+    file = request.files['image']
+    path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+    file.save(path)
 
-        try:
-            img = cv2.imread(path)
-            text = pytesseract.image_to_string(img)
-        except:
-            text = ""
+    try:
+        img = cv2.imread(path)
+        text = pytesseract.image_to_string(img)
+    except:
+        text = ""
 
-        reviews = text.split('\n')
+    reviews = text.split('\n')
+    results = []
+    for review in reviews:
+        if review.strip() == "":
+            continue
+        prediction, confidence = predict_review(review)
+        if prediction == 0:
+            blockchain.add_review({
+                "review": review,
+                "confidence": round(confidence*100,2),
+                "user": current_user.username,
+                "source": "Screenshot"
+            })
+        results.append((review, prediction, round(confidence*100,2)))
 
-        results = []
-        for review in reviews:
-            if review.strip() == "":
-                continue
-
-            prediction, confidence = predict_review(review)
-
-            if prediction == 0:
-                blockchain.add_review({
-                    "review": review,
-                    "confidence": round(confidence * 100, 2),
-                    "user": current_user.username,
-                    "source": "Screenshot"
-                })
-
-            results.append((review, prediction, round(confidence * 100, 2)))
-
-        return render_template('image_results.html', results=results)
-
-    return render_template('upload_image.html')
+    return render_template('image_results.html', results=results)
 
 @app.route('/blockchain_table')
 @login_required
@@ -301,5 +284,5 @@ with app.app_context():
 
 # -------------------- RUN APP --------------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))  # Render requires binding to PORT
-    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=True)
