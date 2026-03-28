@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fake Review Detection</title>
+<title>Fake Review Detection Dashboard</title>
 
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -11,7 +11,6 @@
 </head>
 
 <body>
-
 <header>
   <div class="logo">
     <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
@@ -20,27 +19,44 @@
 </header>
 
 <div class="container">
-
   <h1>FAKE REVIEW DETECTION</h1>
 
-  <!-- INPUT -->
-  <div class="card input-card">
+  <!-- INPUT VIEW -->
+  <div class="card input-card" id="inputView">
     <h3>Analyze Review</h3>
 
-    <textarea id="reviewText" placeholder="Paste reviews (one per line)"></textarea>
+    <div class="textarea-wrapper">
+      <textarea id="reviewText" placeholder="Paste reviews (one per line)"></textarea>
 
-    <button class="analyze-btn" onclick="analyzeReviews()">
+      <div class="upload-wrapper">
+        <button type="button" class="upload-icon" onclick="toggleUploadMenu()">+</button>
+
+        <div class="upload-menu" id="uploadMenu">
+          <label class="menu-item">
+            Upload CSV
+            <input type="file" accept=".csv" onchange="handleFileUpload(event)">
+          </label>
+          <label class="menu-item">
+            Upload Screenshot
+            <input type="file" accept="image/*" onchange="uploadImage(event)">
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <button type="button" class="analyze-btn" onclick="analyzeReviews()">
       Analyze Review
     </button>
   </div>
 
-  <!-- RESULTS -->
-  <div id="resultsView" style="display:none;">
-    <h3>Results</h3>
+  <!-- RESULTS VIEW -->
+  <div id="resultsView" class="hidden">
+    <button class="back-btn" onclick="goBack()">← Back</button>
 
-    <canvas id="pieChart"></canvas>
-
-    <div id="reviewList"></div>
+    <div class="results-grid">
+      <canvas id="pieChart"></canvas>
+      <div id="reviewList"></div>
+    </div>
 
     <div class="stats-grid">
       <div>Total: <span id="totalCount">0</span></div>
@@ -55,7 +71,7 @@
     <div class="stats-grid">
       <div class="stat-box">
         <h4>Total Reviews</h4>
-        <p>{{ total_fake + total_genuine }}</p>
+        <p>{{ total_analyses }}</p>
       </div>
       <div class="stat-box fake">
         <h4>Fake Reviews</h4>
@@ -73,80 +89,8 @@
       View Genuine Reviews
     </a>
   </div>
-
 </div>
 
-<script>
-async function analyzeReviews() {
-    const text = document.getElementById("reviewText").value.trim();
-
-    if (!text) {
-        alert("Please enter at least one review");
-        return;
-    }
-
-    const reviews = text.split("\n");
-
-    let fake = 0;
-    let genuine = 0;
-
-    const reviewList = document.getElementById("reviewList");
-    reviewList.innerHTML = "";
-
-    for (let review of reviews) {
-        if (!review.trim()) continue;
-
-        try {
-            const res = await fetch("/api/predict", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded"
-                },
-                body: "review=" + encodeURIComponent(review)
-            });
-
-            const data = await res.json();
-
-            const div = document.createElement("div");
-            div.className = "review-item";
-            div.innerHTML = `
-                <p>${review}</p>
-                <strong>${data.result} (${data.confidence}%)</strong>
-            `;
-
-            reviewList.appendChild(div);
-
-            if (data.result === "Fake") fake++;
-            else genuine++;
-
-        } catch (err) {
-            console.error(err);
-        }
-    }
-
-    // Update stats
-    document.getElementById("totalCount").innerText = fake + genuine;
-    document.getElementById("fakeCount").innerText = fake;
-    document.getElementById("genuineCount").innerText = genuine;
-
-    // Show results
-    document.getElementById("resultsView").style.display = "block";
-
-    // Pie chart
-    const ctx = document.getElementById("pieChart").getContext("2d");
-
-    new Chart(ctx, {
-        type: "pie",
-        data: {
-            labels: ["Fake", "Genuine"],
-            datasets: [{
-                data: [fake, genuine],
-                backgroundColor: ["#ff4d4d", "#4CAF50"]
-            }]
-        }
-    });
-}
-</script>
-
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>
