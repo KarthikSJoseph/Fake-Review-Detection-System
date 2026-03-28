@@ -10,7 +10,6 @@ import pytesseract
 import cv2
 import nltk
 import tensorflow as tf
-import threading
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
@@ -25,7 +24,7 @@ from datetime import datetime
 # -------------------- BASIC SETUP --------------------
 nltk.download('stopwords')
 
-# Force CPU to prevent GPU errors on Render
+# Disable GPU (important for Render)
 tf.config.set_visible_devices([], 'GPU')
 
 # -------------------- FLASK SETUP --------------------
@@ -46,11 +45,11 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# -------------------- TESSERACT --------------------
+# -------------------- TESSERACT (SAFE) --------------------
 try:
     pytesseract.get_tesseract_version()
 except:
-    pytesseract.pytesseract.tesseract_cmd = None
+    pytesseract.pytesseract.tesseract_cmd = None  # disable if not available
 
 # -------------------- BLOCKCHAIN --------------------
 class Blockchain:
@@ -97,33 +96,28 @@ class Analysis(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# -------------------- LOAD MODEL (LAZY) --------------------
+# -------------------- LOAD MODEL (SAFE) --------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.join(BASE_DIR, 'models', 'fake_review_model.h5')
 tokenizer_path = os.path.join(BASE_DIR, 'models', 'tokenizer.pkl')
 
 model = None
 tokenizer = None
-MAX_LEN = 200
-stop_words = set(stopwords.words('english'))
-stemmer = PorterStemmer()
 
 def load_resources():
     global model, tokenizer
-    if model is None:
-        try:
+    try:
+        if model is None:
             model = load_model(model_path, compile=False)
-        except Exception as e:
-            print(f"Error loading model: {e}")
-    if tokenizer is None:
-        try:
+        if tokenizer is None:
             with open(tokenizer_path, 'rb') as f:
                 tokenizer = pickle.load(f)
-        except Exception as e:
-            print(f"Error loading tokenizer: {e}")
+    except Exception as e:
+        print(f"Error loading model or tokenizer: {e}")
 
-# Preload model in background thread (avoids Render timeout)
-threading.Thread(target=load_resources).start()
+MAX_LEN = 200
+stop_words = set(stopwords.words('english'))
+stemmer = PorterStemmer()
 
 # -------------------- TEXT PREPROCESS --------------------
 def preprocess_text(text):
@@ -135,30 +129,147 @@ def preprocess_text(text):
 
 # -------------------- PREDICT --------------------
 def predict_review(text):
-    load_resources()  # lazy load
-
+    load_resources()
     if model is None or tokenizer is None:
-        return 1, 0.0  # safe default if not loaded
-
+        return 1, 0.0
     if len(text.split()) < 3:
         return 1, 0.90
-
     if re.search(r'(http|www|buy now|click here|free|offer)', text.lower()):
         return 1, 0.95
-
     clean = preprocess_text(text)
     seq = tokenizer.texts_to_sequences([clean])
     pad = pad_sequences(seq, maxlen=MAX_LEN)
     prob = float(model.predict(pad, verbose=0)[0][0])
-
-    if prob > 0.5:
-        return 1, prob
-    else:
-        return 0, 1 - prob
+    return (1, prob) if prob > 0.5 else (0, 1 - prob)
 
 # -------------------- ROUTES --------------------
-# ... keep all your existing routes unchanged ...
-# index, login, register, dashboard, api_predict, upload_csv, upload_image, blockchain_table, logout
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user = User.query.filter_by(username=request.form['username']).first()
+        if user and check_password_hash(user.password, request.form['password']):
+            login_user(user)
+            flash("Login successful!")
+            return redirect(url_for('dashboard'))
+        else:
+            flash("Invalid username or password")
+    return render_template('login.html')
+
+@app.route('/register', methods=['POST'])
+def register():
+    username = request.form['username']
+    password = request.form['password']
+    confirm = request.form['confirm_password']
+    if password != confirm:
+        flash("Passwords do not match")
+        return redirect(url_for('login'))
+    if User.query.filter_by(username=username).first():
+        flash("Username already exists")
+        return redirect(url_for('login'))
+    new_user = User(username=username, password=generate_password_hash(password))
+    db.session.add(new_user)
+    db.session.commit()
+    flash("Account created successfully!")
+    return redirect(url_for('login'))
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    analyses = Analysis.query.filter_by(user_id=current_user.id).all()
+    total_fake = sum(1 for a in analyses if a.result == 1)
+    total_genuine = sum(1 for a in analyses if a.result == 0)
+    return render_template('dashboard.html', total_fake=total_fake, total_genuine=total_genuine)
+
+@app.route('/api/predict', methods=['POST'])
+@login_required
+def api_predict():
+    review = request.form.get('review')
+    if not review or review.strip() == "":
+        return jsonify({"error": "No review provided"}), 400
+    prediction, confidence = predict_review(review)
+    analysis = Analysis(user_id=current_user.id, review=review, result=prediction, confidence=confidence)
+    db.session.add(analysis)
+    db.session.commit()
+    if prediction == 0:
+        blockchain.add_review({
+            "review": review,
+            "confidence": round(confidence * 100, 2),
+            "user": current_user.username,
+            "source": "Manual"
+        })
+    return jsonify({"result": "Fake" if prediction == 1 else "Genuine", "confidence": round(confidence * 100, 2)})
+
+@app.route('/upload_csv', methods=['POST'])
+@login_required
+def upload_csv():
+    file = request.files['file']
+    df = pd.read_csv(file)
+    results = []
+    for review in df.iloc[:, 0]:
+        review = str(review)
+        if review.strip() == "":
+            continue
+        prediction, confidence = predict_review(review)
+        if prediction == 0:
+            blockchain.add_review({
+                "review": review,
+                "confidence": round(confidence * 100, 2),
+                "user": current_user.username,
+                "source": "CSV"
+            })
+        results.append((review, prediction, round(confidence * 100, 2)))
+    return render_template('image_results.html', results=results)
+
+@app.route('/upload_image', methods=['GET', 'POST'])
+@login_required
+def upload_image():
+    if request.method == 'POST':
+        file = request.files['image']
+        path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(path)
+        try:
+            img = cv2.imread(path)
+            text = pytesseract.image_to_string(img)
+        except:
+            text = ""
+        reviews = text.split('\n')
+        results = []
+        for review in reviews:
+            if review.strip() == "":
+                continue
+            prediction, confidence = predict_review(review)
+            if prediction == 0:
+                blockchain.add_review({
+                    "review": review,
+                    "confidence": round(confidence * 100, 2),
+                    "user": current_user.username,
+                    "source": "Screenshot"
+                })
+            results.append((review, prediction, round(confidence * 100, 2)))
+        return render_template('image_results.html', results=results)
+    return render_template('upload_image.html')
+
+@app.route('/blockchain_table')
+@login_required
+def blockchain_table():
+    return render_template('blockchain_table.html', chain=blockchain.chain)
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash("Logged out successfully")
+    return redirect(url_for('login'))
+
 # -------------------- INIT DB --------------------
 with app.app_context():
     db.create_all()
+
+# -------------------- RUN APP --------------------
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))  # Render port
+    app.run(host='0.0.0.0', port=port)
