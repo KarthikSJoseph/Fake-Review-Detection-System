@@ -55,7 +55,7 @@ async function analyzeReviews() {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "review=" + encodeURIComponent(review),
-        credentials: "same-origin"  // <-- important for login-required route
+        credentials: "same-origin"
       });
 
       if (!response.ok) throw new Error("Server returned an error");
@@ -64,8 +64,14 @@ async function analyzeReviews() {
 
       const div = document.createElement("div");
       div.classList.add("review-item");
-      if (data.result === "Fake") { div.classList.add("fake"); fakeCount++; }
-      else { div.classList.add("genuine"); genuineCount++; }
+
+      if (data.result === "Fake") {
+        div.classList.add("fake");
+        fakeCount++;
+      } else {
+        div.classList.add("genuine");
+        genuineCount++;
+      }
 
       div.innerHTML = `<strong>${data.result}</strong> - ${review}`;
       reviewList.appendChild(div);
@@ -76,14 +82,18 @@ async function analyzeReviews() {
     }
   }
 
+  // Update stats
   document.getElementById("totalCount").innerText = reviews.length;
   document.getElementById("fakeCount").innerText = fakeCount;
   document.getElementById("genuineCount").innerText = genuineCount;
 
+  // Switch views
   document.getElementById("inputView").classList.add("hidden");
   document.getElementById("resultsView").classList.remove("hidden");
 
+  // 🔥 FIXED CHART RENDERING
   const ctx = document.getElementById("pieChart").getContext("2d");
+
   if (chart) chart.destroy();
 
   chart = new Chart(ctx, {
@@ -94,6 +104,15 @@ async function analyzeReviews() {
         data: [fakeCount, genuineCount],
         backgroundColor: ["#ef4444", "#22c55e"]
       }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,  // ✅ CRITICAL FIX
+      plugins: {
+        legend: {
+          position: "top"
+        }
+      }
     }
   });
 }
