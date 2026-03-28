@@ -1,122 +1,95 @@
-import os
-from flask import Flask, render_template, request, redirect, url_for, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin
-import tensorflow as tf
-import numpy as np
+from flask_bcrypt import Bcrypt
+from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin, current_user
 
-# ----------------------
-# App & DB Configuration
-# ----------------------
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
+app.secret_key = 'your_secret_key_here'
 
-# Database (SQLite for simplicity)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///reviews.db'
+# Database configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+bcrypt = Bcrypt(app)
 
-# Login Manager
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = "login"
+login_manager.login_view = 'login'
 
-# ----------------------
-# Models
-# ----------------------
+# User model
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(150), unique=True)
-    password = db.Column(db.String(150))
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
 
-class ReviewAnalysis(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    review_text = db.Column(db.Text)
-    result = db.Column(db.String(20))  # "Fake" or "Genuine"
+# Create database tables
+with app.app_context():
+    db.create_all()
 
-# ----------------------
-# Login Loader
-# ----------------------
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# ----------------------
-# Routes
-# ----------------------
-@app.route("/")
+# Home route
+@app.route('/')
 @login_required
-def dashboard():
-    total_analyses = ReviewAnalysis.query.count()
-    total_fake = ReviewAnalysis.query.filter_by(result="Fake").count()
-    total_genuine = ReviewAnalysis.query.filter_by(result="Genuine").count()
-    return render_template("dashboard.html", total_analyses=total_analyses,
-                           total_fake=total_fake, total_genuine=total_genuine)
+def home():
+    return f"Hello, {current_user.username}! You are logged in."
 
-@app.route("/login", methods=["GET", "POST"])
+# Login route
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
-        user = User.query.filter_by(username=username, password=password).first()
-        if user:
-            login_user(user)
-            return redirect(url_for("dashboard"))
-        else:
-            return "Invalid credentials"
-    return render_template("login.html")
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
 
-@app.route("/logout")
+    error = None
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        user = User.query.filter_by(username=username).first()
+        if user and bcrypt.check_password_hash(user.password, password):
+            login_user(user)
+            flash('Logged in successfully!')
+            return redirect(url_for('home'))
+        else:
+            error = 'Invalid username or password.'
+
+    return render_template('login.html', error=error)
+
+# Register route
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+
+    error = None
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        confirm_password = request.form['confirm_password']
+
+        if password != confirm_password:
+            error = "Passwords do not match."
+        elif User.query.filter_by(username=username).first():
+            error = "Username already exists."
+        else:
+            hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+            new_user = User(username=username, password=hashed_password)
+            db.session.add(new_user)
+            db.session.commit()
+            flash('Account created successfully! Please log in.')
+            return redirect(url_for('login'))
+
+    return render_template('login.html', error=error)
+
+# Logout route
+@app.route('/logout')
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for("login"))
+    flash('You have been logged out.')
+    return redirect(url_for('login'))
 
-# ----------------------
-# API for Predictions
-# ----------------------
-# Dummy model for demonstration; replace with your real TensorFlow model
-def predict_review(text):
-    # Example: randomly label reviews (replace with your model)
-    return np.random.choice(["Fake", "Genuine"])
-
-@app.route("/api/predict", methods=["POST"])
-@login_required
-def api_predict():
-    review = request.form.get("review")
-    if not review:
-        return jsonify({"error": "No review provided"}), 400
-    result = predict_review(review)
-    analysis = ReviewAnalysis(review_text=review, result=result)
-    db.session.add(analysis)
-    db.session.commit()
-    return jsonify({"result": result, "analysis_id": analysis.id})
-
-# ----------------------
-# File Upload Routes
-# ----------------------
-@app.route("/upload_csv", methods=["POST"])
-@login_required
-def upload_csv():
-    file = request.files.get("file")
-    if file:
-        # Process CSV here
-        return redirect(url_for("dashboard"))
-    return "No file uploaded", 400
-
-@app.route("/upload_image", methods=["POST"])
-@login_required
-def upload_image():
-    file = request.files.get("image")
-    if file:
-        # Process image here
-        return redirect(url_for("dashboard"))
-    return "No image uploaded", 400
-
-# ----------------------
-# Run App (Render Compatible)
-# ----------------------
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    db.create_all()  # Ensure tables exist
-    app.run(host="0.0.0.0", port=port)
+if __name__ == '__main__':
+    app.run(debug=True)
