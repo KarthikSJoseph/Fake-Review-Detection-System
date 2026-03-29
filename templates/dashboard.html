@@ -3,21 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard - Fake Review Detection</title>
+<title>Fake Review Detection</title>
 
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<style>
-/* Optional dashboard layout improvement */
-.dashboard {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 20px;
-}
-</style>
-
 </head>
 
 <body>
@@ -26,20 +16,22 @@
   <div class="logo">
     <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
   </div>
+
   <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
 </header>
 
-<div class="container dashboard">
+<div class="container">
 
-  <h1>FAKE REVIEW DETECTION DASHBOARD</h1>
+  <h1>FAKE REVIEW DETECTION</h1>
 
-  <!-- INPUT SECTION -->
+  <!-- INPUT VIEW -->
   <div class="card input-card" id="inputView">
     <h3>Analyze Review</h3>
 
     <div class="textarea-wrapper">
       <textarea id="reviewText" placeholder="Paste reviews (one per line)"></textarea>
 
+      <!-- + Button -->
       <div class="upload-wrapper">
         <button type="button" class="upload-icon" onclick="toggleUploadMenu()">+</button>
 
@@ -60,9 +52,9 @@
     <button type="button" class="analyze-btn" onclick="analyzeReviews()">
       Analyze Review
     </button>
-  </div>
+  </div>*
 
-  <!-- RESULTS SECTION -->
+  <!-- RESULTS VIEW -->
   <div id="resultsView" class="hidden">
     <button class="back-btn" onclick="goBack()">← Back</button>
 
@@ -78,21 +70,18 @@
     </div>
   </div>
 
-  <!-- SUMMARY SECTION -->
+  <!-- SUMMARY -->
   <div class="card stats-card">
     <h3>Overall Summary</h3>
-
     <div class="stats-grid">
       <div class="stat-box">
         <h4>Total Reviews</h4>
         <p>{{ total_analyses }}</p>
       </div>
-
       <div class="stat-box fake">
         <h4>Fake Reviews</h4>
         <p>{{ total_fake }}</p>
       </div>
-
       <div class="stat-box genuine">
         <h4>Genuine Reviews</h4>
         <p>{{ total_genuine }}</p>
@@ -100,16 +89,13 @@
     </div>
   </div>
 
-  <!-- BLOCKCHAIN LINK -->
-  <div style="text-align: right;">
+  <div style="text-align: right; margin-top: 10px;">
     <a href="/blockchain_table" class="blockchain-btn">
       View Genuine Reviews
     </a>
   </div>
-
 </div>
 
 <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-
 </body>
 </html>
