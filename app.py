@@ -23,19 +23,22 @@ from datetime import datetime
 
 # -------------------- BASIC SETUP --------------------
 nltk.download('stopwords')
-tf.config.set_visible_devices([], 'GPU')  # disable GPU for Render
+tf.config.set_visible_devices([], 'GPU')
 
 # -------------------- FLASK SETUP --------------------
 app = Flask(__name__)
 app.secret_key = "secret123"
+
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///users.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 UPLOAD_FOLDER = '/tmp/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 db = SQLAlchemy(app)
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
@@ -95,6 +98,7 @@ def load_user(user_id):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.join(BASE_DIR, 'models', 'fake_review_model.h5')
 tokenizer_path = os.path.join(BASE_DIR, 'models', 'tokenizer.pkl')
+
 model, tokenizer = None, None
 
 def load_resources():
@@ -117,17 +121,22 @@ def preprocess_text(text):
     words = [stemmer.stem(w) for w in words if w not in stop_words]
     return " ".join(words)
 
-# -------------------- PREDICT --------------------
+# -------------------- PREDICTION --------------------
 def predict_review(text):
     load_resources()
+
     if len(text.split()) < 3:
         return 1, 0.90
+
     if re.search(r'(http|www|buy now|click here|free|offer)', text.lower()):
         return 1, 0.95
+
     clean = preprocess_text(text)
     seq = tokenizer.texts_to_sequences([clean])
     pad = pad_sequences(seq, maxlen=MAX_LEN)
+
     prob = float(model.predict(pad, verbose=0)[0][0])
+
     return (1, prob) if prob > 0.5 else (0, 1 - prob)
 
 # -------------------- ROUTES --------------------
@@ -135,51 +144,80 @@ def predict_review(text):
 def index():
     return redirect(url_for('login'))
 
+# -------- LOGIN --------
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form['username']).first()
+
         if user and check_password_hash(user.password, request.form['password']):
             login_user(user)
-            flash("Login successful!")
             return redirect(url_for('dashboard'))
         else:
             flash("Invalid username or password")
+
     return render_template('login.html')
 
+# -------- REGISTER --------
 @app.route('/register', methods=['POST'])
 def register():
     username = request.form['username']
     password = request.form['password']
     confirm = request.form['confirm_password']
+
     if password != confirm:
         flash("Passwords do not match")
         return redirect(url_for('login'))
+
     if User.query.filter_by(username=username).first():
         flash("Username already exists")
         return redirect(url_for('login'))
+
     new_user = User(username=username, password=generate_password_hash(password))
     db.session.add(new_user)
     db.session.commit()
+
     flash("Account created successfully!")
     return redirect(url_for('login'))
 
+# -------- DASHBOARD --------
 @app.route('/dashboard')
 @login_required
 def dashboard():
     analyses = Analysis.query.filter_by(user_id=current_user.id).all()
+
     total_fake = sum(1 for a in analyses if a.result == 1)
     total_genuine = sum(1 for a in analyses if a.result == 0)
-    return render_template('dashboard.html', total_fake=total_fake, total_genuine=total_genuine)
+    total_analyses = len(analyses)
 
+    return render_template(
+        'dashboard.html',
+        total_fake=total_fake,
+        total_genuine=total_genuine,
+        total_analyses=total_analyses
+    )
+
+# -------- API PREDICT --------
 @app.route('/api/predict', methods=['POST'])
 @login_required
 def api_predict():
     review = request.form.get('review')
+
+    if not review:
+        return jsonify({"error": "No review provided"}), 400
+
     prediction, confidence = predict_review(review)
-    analysis = Analysis(user_id=current_user.id, review=review, result=prediction, confidence=confidence)
+
+    analysis = Analysis(
+        user_id=current_user.id,
+        review=review,
+        result=prediction,
+        confidence=confidence
+    )
+
     db.session.add(analysis)
     db.session.commit()
+
     if prediction == 0:
         blockchain.add_review({
             "review": review,
@@ -187,21 +225,45 @@ def api_predict():
             "user": current_user.username,
             "source": "Manual"
         })
+
     return jsonify({
         "result": "Fake" if prediction == 1 else "Genuine",
-        "confidence": round(confidence * 100, 2)
+        "confidence": round(confidence * 100, 2),
+        "analysis_id": analysis.id
     })
 
+# -------- SINGLE RESULT PAGE --------
+@app.route('/results/<int:analysis_id>')
+@login_required
+def results_page(analysis_id):
+    analysis = Analysis.query.get_or_404(analysis_id)
+
+    return render_template(
+        'result_single.html',
+        review=analysis.review,
+        result="Fake" if analysis.result else "Genuine",
+        confidence=round(analysis.confidence * 100, 2)
+    )
+
+# -------- CSV UPLOAD --------
 @app.route('/upload_csv', methods=['POST'])
 @login_required
 def upload_csv():
-    file = request.files['file']
+    file = request.files.get('file')
+
+    if not file:
+        return "No file uploaded", 400
+
     df = pd.read_csv(file)
     results = []
+
     for review in df.iloc[:, 0]:
-        review = str(review)
-        if review.strip() == "": continue
+        review = str(review).strip()
+        if not review:
+            continue
+
         prediction, confidence = predict_review(review)
+
         if prediction == 0:
             blockchain.add_review({
                 "review": review,
@@ -209,25 +271,44 @@ def upload_csv():
                 "user": current_user.username,
                 "source": "CSV"
             })
-        results.append((review, prediction, round(confidence * 100, 2)))
-    return render_template('image_results.html', results=results)
 
+        results.append({
+            "review": review,
+            "result": "Fake" if prediction else "Genuine",
+            "confidence": round(confidence * 100, 2)
+        })
+
+    return render_template("results_bulk.html", results=results)
+
+# -------- IMAGE UPLOAD --------
 @app.route('/upload_image', methods=['POST'])
 @login_required
 def upload_image():
-    file = request.files['image']
+    file = request.files.get('image')
+
+    if not file:
+        return "No image uploaded", 400
+
     path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
     file.save(path)
+
     try:
         img = cv2.imread(path)
         text = pytesseract.image_to_string(img)
-    except:
+    except Exception as e:
+        print("OCR Error:", e)
         text = ""
+
     reviews = text.split('\n')
     results = []
+
     for review in reviews:
-        if review.strip() == "": continue
+        review = review.strip()
+        if not review:
+            continue
+
         prediction, confidence = predict_review(review)
+
         if prediction == 0:
             blockchain.add_review({
                 "review": review,
@@ -235,25 +316,33 @@ def upload_image():
                 "user": current_user.username,
                 "source": "Screenshot"
             })
-        results.append((review, prediction, round(confidence * 100, 2)))
-    return render_template('image_results.html', results=results)
 
+        results.append({
+            "review": review,
+            "result": "Fake" if prediction else "Genuine",
+            "confidence": round(confidence * 100, 2)
+        })
+
+    return render_template("results_bulk.html", results=results)
+
+# -------- BLOCKCHAIN --------
 @app.route('/blockchain_table')
 @login_required
 def blockchain_table():
     return render_template('blockchain_table.html', chain=blockchain.chain)
 
+# -------- LOGOUT --------
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
-    flash("Logged out successfully")
     return redirect(url_for('login'))
 
 # -------------------- INIT DB --------------------
 with app.app_context():
     db.create_all()
 
+# -------------------- RUN --------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
