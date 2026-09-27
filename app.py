@@ -63,34 +63,10 @@ class Analysis(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     total_fake = db.Column(db.Integer, default=0)
     total_genuine = db.Column(db.Integer, default=0)
-class Blockchain:
-    def __init__(self):
-        self.chain = []
-        self.create_block(previous_hash='0')
 
-    def create_block(self, data=None, previous_hash=''):
-        block = {
-            'index': len(self.chain) + 1,
-            'timestamp': str(time.time()),
-            'data': data,
-            'previous_hash': previous_hash
-        }
-
-        block['hash'] = self.hash(block)
-        self.chain.append(block)
-        return block
-
-    def add_review(self, data):
-        previous_hash = self.chain[-1]['hash']
-        self.create_block(data, previous_hash)
-
-    def hash(self, block):
-        encoded_block = json.dumps(block, sort_keys=True).encode()
-        return hashlib.sha256(encoded_block).hexdigest()
 # Create blockchain object
 blockchain = Blockchain()
 # Load model and tokenizer
-MAX_WORDS = 5000
 MAX_LEN = 150
 nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
 if not os.path.exists(nltk_data_path):
@@ -325,10 +301,6 @@ def upload_image():
         return render_template('image_results.html', results=results)
 
     return render_template('upload_image.html')
-@app.route('/analysis')
-@login_required
-def analysis():
-    return render_template('analysis.html')
 
 @app.route('/api/predict', methods=['POST'])
 @login_required
@@ -464,26 +436,6 @@ def results(analysis_id):
         total_reviews=len(all_analyses),
         history=all_analyses
     )
-@app.route('/show_users')
-def show_users():
-    users = User.query.all()
-    return "<br>".join([u.username for u in users])
-@app.route('/users_table')
-def users_table():
-    users = User.query.all()
-    table = "<h2>User Table</h2><table border=1><tr><th>ID</th><th>Username</th><th>Password</th></tr>"
-    
-    for u in users:
-        table += f"<tr><td>{u.id}</td><td>{u.username}</td><td>{u.password}</td></tr>"
-    
-    table += "</table>"
-    return table
-@app.route("/view_db")
-@login_required
-def view_db():
-    users = User.query.all()
-    analyses = Analysis.query.all()
-    return render_template("view_db.html", users=users, analyses=analyses)
 @app.route('/logout')
 @login_required
 def logout():
