@@ -1,13 +1,9 @@
 from blockchain import Blockchain
-blockchain = Blockchain()
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import hashlib
-import json
-import time
 import nltk
 import os
 import pickle
@@ -16,7 +12,6 @@ import pandas as pd
 import re
 import pytesseract
 import cv2
-from PIL import Image
 
 if os.name == "nt":  # Windows
     pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -28,7 +23,6 @@ from nltk.stem import PorterStemmer
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from datetime import datetime
-import csv
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-fallback-key')
@@ -85,9 +79,6 @@ except LookupError:
     nltk.download('punkt', download_dir=nltk_data_path)
 stop_words = set(stopwords.words('english'))
 stemmer = PorterStemmer()
-
-model = None
-tokenizer = None
 
 model = None
 tokenizer = None
