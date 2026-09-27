@@ -31,8 +31,7 @@ from datetime import datetime
 import csv
 
 app = Flask(__name__)
-app.secret_key = "secret123"
-app.config['SECRET_KEY'] = 'your-secret-key-change-this'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-fallback-key')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, 'users.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'users.db')
@@ -92,7 +91,7 @@ class Blockchain:
 blockchain = Blockchain()
 # Load model and tokenizer
 MAX_WORDS = 5000
-MAX_LEN = 200
+MAX_LEN = 150
 nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
 if not os.path.exists(nltk_data_path):
     os.makedirs(nltk_data_path)
@@ -171,8 +170,7 @@ def predict_review(text):
 
     # Load ML model only when needed
     load_ml_model()
-    print("Model:", model)
-    print("Tokenizer:", tokenizer)
+    
     if model is None or tokenizer is None:
         return 0, 0.50  # Model not loaded
 
@@ -206,22 +204,12 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
 
-        print("Trying login with:", username)
-
         user = User.query.filter_by(username=username).first()
-
-        print("User found:", user)
-
-        if user:
-            print("Stored hash:", user.password)
-            print("Password check:", check_password_hash(user.password, password))
 
         if user and check_password_hash(user.password, password):
             login_user(user)
-            print("Login success")
             return redirect(url_for('dashboard'))
         else:
-            print("Login failed")
             return render_template('login.html', error='Invalid username or password')
 
     return render_template('login.html')
